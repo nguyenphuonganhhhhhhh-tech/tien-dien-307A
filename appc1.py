@@ -2,14 +2,13 @@ import streamlit as st
 import pandas as pd
 import requests
 import io
-import re
 
 st.set_page_config(page_title="Tính Tiền Điện Phòng 307A", page_icon="⚡", layout="centered")
 
 st.title("⚡ Tính Tiền Điện Phòng 307A")
-st.write("Tự động đọc số ngày ở từ **Google Sheet** để chia tiền điện cho từng thành viên.")
+st.write("Tự động đọc số ngày ở từ **cột 32 (Tổng)** trên Google Sheet.")
 
-# Danh sách 6 bạn trong phòng
+# Danh sách 6 thành viên cố định theo đúng thứ tự
 danh_sach_thanh_vien = [
     "Hà Phương Anh",
     "Phương Ly",
@@ -19,7 +18,7 @@ danh_sach_thanh_vien = [
     "Nguyễn Phương Anh"
 ]
 
-# 1. Tổng tiền điện
+# 1. Nhập tổng số tiền điện
 st.subheader("1. Tổng tiền điện")
 tong_tien = st.number_input(
     "Nhập tổng tiền điện tháng này (VNĐ):",
@@ -31,79 +30,62 @@ tong_tien = st.number_input(
 
 st.markdown("---")
 
-# 2. Đọc toàn diện Google Sheet
+# 2. Đọc tự động từ cột 32 của Google Sheet
 st.subheader("2. Dữ liệu từ Google Sheet")
 
-col_btn1, col_btn2 = st.columns([3, 1])
-with col_btn2:
+col_head1, col_head2 = st.columns([3, 1])
+with col_head2:
     if st.button("🔄 Làm mới Sheet"):
         st.cache_data.clear()
         st.rerun()
 
 SHEET_ID = "1lanmHwXOPIM_6KV0inZV2KFdP1Xmy3k7uUljA3yyvvM"
 SHEET_NAME = "Sheet1"
-# Đọc trực tiếp định dạng CSV sạch nhất
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
 
 so_ngay_dict = {ten: 0.0 for ten in danh_sach_thanh_vien}
 
 try:
-    # Đọc thô toàn bộ bảng tính không ép header để không bị sót cột
     response = requests.get(CSV_URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
     
     if response.status_code == 200:
-        # Đọc toàn bộ bảng dạng ma trận phẳng
+        # Đọc dữ liệu bảng tính thô
         df_raw = pd.read_csv(io.StringIO(response.text), header=None, dtype=str)
         
-        # Quét tìm vị trí hàng của từng thành viên
-        for ten in danh_sach_thanh_vien:
-            ten_chuan = ten.strip().lower()
-            tim_thay = False
-            
-            for row_idx, row in df_raw.iterrows():
-                # Kiểm tra xem tên có nằm trong hàng này không (thường ở cột 0, 1 hoặc 2)
-                row_str_cells = [str(cell).strip().lower() for cell in row.values if pd.notna(cell)]
-                if any(ten_chuan == cell or (ten_chuan in cell and len(cell) < len(ten_chuan) + 5) for cell in row_str_cells):
-                    tim_thay = True
-                    # Tìm tất cả các giá trị là số trong hàng của bạn này (bỏ qua STT ở đầu)
-                    cac_so = []
-                    for idx_col, val in enumerate(row.values):
-                        if idx_col <= 1:  # Bỏ qua cột STT và cột Tên
-                            continue
-                        if pd.notna(val):
-                            val_str = str(val).replace(',', '.').strip()
-                            try:
-                                num = float(val_str)
-                                cac_so.append(num)
-                            except ValueError:
-                                pass
-                    
-                    if cac_so:
-                        # Nếu ô cuối cùng lớn hơn tổng các ngày riêng lẻ hoặc bạn có cột Tổng ở cuối
-                        # Thường cột "Tổng" là số cuối cùng trên hàng
-                        # Nếu số cuối cùng chính là số tổng:
-                        if len(cac_so) > 1 and cac_so[-1] == sum(cac_so[:-1]):
-                            so_ngay_dict[ten] = float(cac_so[-1])
-                        elif len(cac_so) > 1 and cac_so[-1] > 1: # Cột tổng thường có giá trị cộng dồn
-                            so_ngay_dict[ten] = float(cac_so[-1])
-                        else:
-                            # Nếu bạn chỉ đánh dấu số 1 các ngày và chưa có cột tổng: cộng toàn bộ các số 1
-                            so_ngay_dict[ten] = float(sum(cac_so))
-                    break
-                    
-        st.success("✅ Đã kết nối và đọc toàn bộ dữ liệu Google Sheet thành công!")
+        # Chỉ định rõ cột cần lấy: Cột 32
+        TARGET_COL = 32
         
-        with st.expander("👁️ Bấm để xem toàn bộ bảng Google Sheet đã đọc"):
+        if TARGET_COL in df_raw.columns:
+            # Dò tìm từng bạn và lấy giá trị ở đúng cột 32 trên dòng của bạn đó
+            for ten in danh_sach_thanh_vien:
+                ten_clean = ten.strip().lower()
+                for idx, row in df_raw.iterrows():
+                    # Kiểm tra xem dòng này có tên bạn đó không
+                    row_text = " ".join([str(val).strip().lower() for val in row.values if pd.notna(val)])
+                    if ten_clean in row_text:
+                        val_col32 = row[TARGET_COL]
+                        try:
+                            # Chuyển đổi giá trị tại cột 32 sang số
+                            so_ngay_dict[ten] = float(str(val_col32).replace(',', '.').strip())
+                        except (ValueError, TypeError):
+                            so_ngay_dict[ten] = 0.0
+                        break
+                        
+            st.success(f"✅ Đã kết nối Sheet thành công! Tự động lấy số ngày từ **cột {TARGET_COL}**.")
+        else:
+            st.error(f"⚠️ Bảng tính hiện tại chỉ có {len(df_raw.columns)} cột, không tìm thấy cột {TARGET_COL}.")
+
+        with st.expander("👁️ Xem bảng tính đọc từ Google Sheet"):
             st.dataframe(df_raw)
     else:
-        st.error(f"❌ Không thể tải Google Sheet (Mã lỗi HTTP: {response.status_code}).")
+        st.error(f"❌ Không tải được Google Sheet (Mã lỗi HTTP: {response.status_code}).")
 
 except Exception as e:
     st.error(f"❌ Lỗi khi đọc dữ liệu: {e}")
 
 st.markdown("---")
 
-# 3. Form hiển thị số ngày tự động (vẫn cho phép sửa tay trực tiếp)
+# 3. Form hiển thị số ngày được tự động điền từ cột 32 (vẫn sửa tay được nếu cần)
 st.subheader("3. Số ngày ở của từng bạn")
 danh_sach = []
 cols_form = st.columns(2)
@@ -128,7 +110,7 @@ if st.button("👉 Tính tiền điện", type="primary", use_container_width=Tr
     tong_so_ngay = sum(item["Số ngày ở"] for item in danh_sach)
     
     if tong_so_ngay == 0:
-        st.error("❌ Tổng số ngày ở của các bạn đang bằng 0. Vui lòng kiểm tra lại!")
+        st.error("❌ Tổng số ngày ở của các bạn đang bằng 0. Vui lòng kiểm tra lại số ngày!")
     else:
         don_gia_ngay = tong_tien / tong_so_ngay
         
@@ -139,7 +121,7 @@ if st.button("👉 Tính tiền điện", type="primary", use_container_width=Tr
             tong_tien_thuc_te += tien_dong
             ket_qua.append({
                 "Họ và tên": item["Họ và tên"],
-                "Số ngày ở": f"{item['Số ngày ở']:g} ngày",
+                "Số ngày ở (Cột 32)": f"{item['Số ngày ở']:g} ngày",
                 "Tiền cần đóng": f"{tien_dong:,.0f} VNĐ"
             })
             

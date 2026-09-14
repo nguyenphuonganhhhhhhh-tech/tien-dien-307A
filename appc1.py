@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import io
 
-st.set_page_config(page_title="TIỀN ĐIỆN NƯỚC P307A", page_icon="⚡", layout="centered")
+st.set_page_config(page_title="TIỀN ĐIỆN NƯỚC P307A", layout="centered")
 
 st.title("TIỀN ĐIỆN NƯỚC P307A")
 

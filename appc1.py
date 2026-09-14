@@ -3,10 +3,10 @@ import pandas as pd
 import requests
 import io
 
-st.set_page_config(page_title="Tính Tiền Điện Phòng 307A", page_icon="⚡", layout="centered")
+st.set_page_config(page_title="TIỀN ĐIỆN NƯỚC P307A", page_icon="⚡", layout="centered")
 
-st.title("⚡ Tính Tiền Điện Phòng 307A")
-st.write("Tự động lấy dữ liệu trực tiếp từ **Cột 1 (Tên)** và **Cột 32 (Số ngày)** trên Google Sheet.")
+st.title("TIỀN ĐIỆN NƯỚC P307A")
+
 
 # Danh sách 6 thành viên cố định
 danh_sach_thanh_vien = [
@@ -23,8 +23,8 @@ st.subheader("1. Tổng tiền điện")
 tong_tien = st.number_input(
     "Nhập tổng tiền điện tháng này (VNĐ):",
     min_value=0,
-    value=1500000,
-    step=10000,
+    value=5000000,
+    step=1000,
     format="%d"
 )
 
@@ -69,8 +69,8 @@ try:
                 except (ValueError, TypeError):
                     so_ngay_dict[ten] = 0.0
 
-        st.success("✅ Đã kết nối thành công! Chỉ đọc đúng Cột 1 và Cột 32.")
-        with st.expander("👁️ Xem dữ liệu 2 cột trích xuất từ Sheet"):
+        st.success("Đã kết nối thành công với Sheet")
+        with st.expander("Xem dữ liệu trích xuất"):
             st.dataframe(df_sub[["Tên", "Số ngày (Cột 32)"]])
     else:
         st.error(f"❌ Không tải được Sheet (Mã lỗi {response.status_code}).")
@@ -101,7 +101,7 @@ for i, ten in enumerate(danh_sach_thanh_vien):
 st.markdown("---")
 
 # 4. Tính toán kết quả
-if st.button("👉 Tính tiền điện", type="primary", use_container_width=True):
+if st.button("Tính tiền điện nước từng thành viên", type="primary", use_container_width=True):
     tong_so_ngay = sum(item["Số ngày ở"] for item in danh_sach)
     
     if tong_so_ngay == 0:

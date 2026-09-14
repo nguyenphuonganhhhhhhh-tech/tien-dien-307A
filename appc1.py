@@ -2,31 +2,12 @@ import streamlit as st
 import pandas as pd
 import re
 
-st.set_page_config(page_title= "TIỀN ĐIỆN NƯỚC P307A", page_icon="⚡", layout="centered")
+st.set_page_config(page_title="Tính Tiền Điện Phòng 307A", page_icon="⚡", layout="centered")
 
-st.title("TIỀN ĐIỆN NƯỚC P307A")
-st.write("Tự động đọc số ngày ở từ **Google Sheets** để tính tiền điện.")
+st.title("⚡ Tính Tiền Điện Phòng 307A")
+st.write("Tự động đọc số ngày ở từ cột **Tổng** trên Google Sheet.")
 
-# 1. Nhập tổng tiền điện
-st.subheader("1. Tổng tiền điện")
-tong_tien = st.number_input(
-    "Nhập tổng tiền điện tháng này (VNĐ):",
-    min_value=0,
-    value=3000000,
-    step=1000,
-    format="%d"
-)
-
-st.markdown("---")
-
-# 2. Nhập link Google Sheet
-st.subheader("2. Kết nối Google Sheet")
-st.caption("📌 *Lưu ý: Bảng tính Google Sheet cần được bật chia sẻ quyền xem: **Chia sẻ -> Bất kỳ ai có đường liên kết đều có thể xem**.*")
-
-# Bạn có thể điền sẵn link mặc định của phòng vào ô bên dưới
-link_sheet_mac_dinh = "https://docs.google.com/spreadsheets/d/1lanmHwXOPIM_6KV0inZV2KFdP1Xmy3k7uUljA3yyvvM/edit?usp=sharing" 
-url_sheet = st.text_input("https://docs.google.com/spreadsheets/d/1lanmHwXOPIM_6KV0inZV2KFdP1Xmy3k7uUljA3yyvvM/edit?usp=sharing", value=link_sheet_mac_dinh)
-
+# Danh sách 6 thành viên cố định
 danh_sach_thanh_vien = [
     "Hà Phương Anh",
     "Phương Ly",
@@ -36,10 +17,23 @@ danh_sach_thanh_vien = [
     "Nguyễn Phương Anh"
 ]
 
-so_ngay_dict = {ten: 30.0 for ten in danh_sach_thanh_vien}
+# 1. Nhập tổng tiền điện
+st.subheader("1. Tổng tiền điện")
+tong_tien = st.number_input(
+    "Nhập tổng tiền điện tháng này (VNĐ):",
+    min_value=0,
+    value=1500000,
+    step=10000,
+    format="%d"
+)
+
+st.markdown("---")
+
+# 2. Đọc tự động từ Google Sheet
+st.subheader("2. Dữ liệu từ Google Sheet")
+DEFAULT_URL = "https://docs.google.com/spreadsheets/d/1lanmHwXOPIM_6KV0inZV2KFdP1Xmy3k7uUljA3yyvvM/edit?usp=sharing"
 
 def lay_csv_url(url):
-    """Chuyển đổi URL Google Sheet thông thường sang link tải dữ liệu CSV"""
     sheet_id_match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
     if not sheet_id_match:
         return None
@@ -47,61 +41,67 @@ def lay_csv_url(url):
     
     gid_match = re.search(r'gid=([0-9]+)', url)
     gid = gid_match.group(1) if gid_match else "0"
-    
     return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
 
-if url_sheet.strip():
-    csv_url = lay_csv_url(url_sheet)
-    if not csv_url:
-        st.error("⚠️ Link Google Sheet không đúng định dạng. Vui lòng kiểm tra lại.")
-    else:
-        try:
-            df_sheet = pd.read_csv(csv_url)
-            st.success("✅ Đã kết nối và tải dữ liệu từ Google Sheet thành công!")
-            
-            with st.expander("👁️ Xem bảng tính từ Google Sheet"):
-                st.dataframe(df_sheet.head(10))
+so_ngay_dict = {ten: 30.0 for ten in danh_sach_thanh_vien}
 
-            cols = df_sheet.columns.tolist()
-            col_select1, col_select2 = st.columns(2)
-            
-            with col_select1:
-                col_ten = st.selectbox("Cột TÊN thành viên:", options=cols, index=0)
-            
-            with col_select2:
-                # Gợi ý tự động cột ngày
-                default_ngay_idx = 1 if len(cols) > 1 else 0
-                for idx, c in enumerate(cols):
-                    if any(kw in str(c).lower() for kw in ["ngày", "ngay", "tổng", "tong", "total", "ở", "o"]):
-                        default_ngay_idx = idx
-                        break
-                col_ngay = st.selectbox("Cột SỐ NGÀY Ở:", options=cols, index=default_ngay_idx)
+try:
+    csv_url = lay_csv_url(DEFAULT_URL)
+    df_sheet = pd.read_csv(csv_url)
+    
+    # 1. Tự động xác định cột Tên (tìm cột đầu tiên hoặc cột có chữ 'tên'/'họ và tên')
+    col_ten = df_sheet.columns[0]
+    for c in df_sheet.columns:
+        if any(kw in str(c).strip().lower() for kw in ["tên", "ten", "họ tên", "thành viên"]):
+            col_ten = c
+            break
 
-            # Chuẩn hóa tên để tự động khớp
-            df_sheet['ten_clean'] = df_sheet[col_ten].astype(str).str.strip().str.lower()
+    # 2. Tự động xác định cột 'Tổng'
+    col_tong = None
+    for c in df_sheet.columns:
+        if "tổng" in str(c).strip().lower() or "tong" in str(c).strip().lower():
+            col_tong = c
+            break
             
-            for ten in danh_sach_thanh_vien:
-                khop = df_sheet[df_sheet['ten_clean'] == ten.strip().lower()]
-                if not khop.empty:
-                    val = khop[col_ngay].values[0]
-                    try:
-                        so_ngay_dict[ten] = float(val)
-                    except (ValueError, TypeError):
-                        so_ngay_dict[ten] = 0.0
+    if col_tong is None:
+        # Nếu không thấy chữ 'Tổng', mặc định lấy cột cuối cùng
+        col_tong = df_sheet.columns[-1]
 
-        except Exception as e:
-            st.error("❌ Không thể đọc Google Sheet. Hãy kiểm tra xem file đã bật **'Bất kỳ ai có đường liên kết'** chưa.")
+    st.success(f"✅ Đã kết nối Sheet! Tự động lấy số ngày từ cột: **'{col_tong}'**")
+
+    # Chuẩn hóa để so khớp tên chính xác
+    df_sheet['ten_clean'] = df_sheet[col_ten].astype(str).str.strip().str.lower()
+
+    for ten in danh_sach_thanh_vien:
+        khop = df_sheet[df_sheet['ten_clean'] == ten.strip().lower()]
+        if not khop.empty:
+            val = khop[col_tong].values[0]
+            try:
+                # Làm sạch và chuyển đổi sang số thực
+                val_clean = str(val).replace(',', '.').strip()
+                so_ngay_dict[ten] = float(val_clean)
+            except (ValueError, TypeError):
+                so_ngay_dict[ten] = 0.0
+
+    with st.expander("👁️ Xem trước bảng tính từ Google Sheet"):
+        st.dataframe(df_sheet)
+
+except Exception as e:
+    st.error(
+        "❌ Chưa đọc được Google Sheet. Bạn nhớ kiểm tra xem file đã bật "
+        "**Chia sẻ -> Bất kỳ ai có đường liên kết đều có thể xem (Viewer)** chưa nhé!"
+    )
 
 st.markdown("---")
 
-# 3. Hiển thị số ngày đã lấy được (có thể chỉnh lại nếu cần)
-st.subheader("3. Số ngày ở của từng bạn")
+# 3. Hiển thị số ngày tương ứng của từng bạn
+st.subheader("3. Số ngày ở của từng thành viên")
 danh_sach = []
-cols = st.columns(2)
+cols_form = st.columns(2)
 
 for i, ten in enumerate(danh_sach_thanh_vien):
     col_idx = i % 2
-    with cols[col_idx]:
+    with cols_form[col_idx]:
         ngay = st.number_input(
             f"Số ngày của **{ten}**:",
             min_value=0.0,
@@ -119,7 +119,7 @@ if st.button("👉 Tính tiền điện", type="primary", use_container_width=Tr
     tong_so_ngay = sum(item["Số ngày ở"] for item in danh_sach)
     
     if tong_so_ngay == 0:
-        st.error("❌ Tổng số ngày ở phải lớn hơn 0!")
+        st.error("❌ Tổng số ngày ở của các thành viên phải lớn hơn 0!")
     else:
         don_gia_ngay = tong_tien / tong_so_ngay
         
@@ -130,11 +130,11 @@ if st.button("👉 Tính tiền điện", type="primary", use_container_width=Tr
             tong_tien_thuc_te += tien_dong
             ket_qua.append({
                 "Họ và tên": item["Họ và tên"],
-                "Số ngày ở": f"{item['Số ngày ở']:g} ngày",
+                "Số ngày ở (từ cột Tổng)": f"{item['Số ngày ở']:g} ngày",
                 "Tiền cần đóng": f"{tien_dong:,.0f} VNĐ"
             })
             
-        st.subheader("4. Kết quả phân bổ tiền điện")
+        st.subheader("4. Bảng phân bổ tiền điện")
         
         m1, m2 = st.columns(2)
         m1.metric("Tổng ngày-người", f"{tong_so_ngay:g} ngày")

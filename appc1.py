@@ -1,13 +1,15 @@
 import streamlit as st
 import pandas as pd
+import requests
+import io
 import re
 
 st.set_page_config(page_title="Tính Tiền Điện Phòng 307A", page_icon="⚡", layout="centered")
 
 st.title("⚡ Tính Tiền Điện Phòng 307A")
-st.write("Tự động đọc số ngày ở từ cột **Tổng** trên Google Sheet.")
+st.write("Tự động đọc số ngày ở từ **Google Sheet** để chia tiền điện.")
 
-# Danh sách 6 thành viên cố định
+# 6 thành viên cố định
 danh_sach_thanh_vien = [
     "Hà Phương Anh",
     "Phương Ly",
@@ -31,70 +33,85 @@ st.markdown("---")
 
 # 2. Đọc tự động từ Google Sheet
 st.subheader("2. Dữ liệu từ Google Sheet")
-DEFAULT_URL = "https://docs.google.com/spreadsheets/d/1lanmHwXOPIM_6KV0inZV2KFdP1Xmy3k7uUljA3yyvvM/edit?usp=sharing"
+SHEET_ID = "1lanmHwXOPIM_6KV0inZV2KFdP1Xmy3k7uUljA3yyvvM"
+SHEET_NAME = "Sheet1"
 
-def lay_csv_url(url):
-    sheet_id_match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
-    if not sheet_id_match:
-        return None
-    sheet_id = sheet_id_match.group(1)
-    
-    gid_match = re.search(r'gid=([0-9]+)', url)
-    gid = gid_match.group(1) if gid_match else "0"
-    return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+# URL truy xuất dữ liệu CSV ổn định nhất của Google
+CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME}"
 
-so_ngay_dict = {ten: 30.0 for ten in danh_sach_thanh_vien}
+so_ngay_dict = {ten: 0.0 for ten in danh_sach_thanh_vien}
+sheet_loaded = False
 
 try:
-    csv_url = lay_csv_url(DEFAULT_URL)
-    df_sheet = pd.read_csv(csv_url)
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    response = requests.get(CSV_URL, headers=headers, timeout=10)
     
-    # 1. Tự động xác định cột Tên (tìm cột đầu tiên hoặc cột có chữ 'tên'/'họ và tên')
-    col_ten = df_sheet.columns[0]
-    for c in df_sheet.columns:
-        if any(kw in str(c).strip().lower() for kw in ["tên", "ten", "họ tên", "thành viên"]):
-            col_ten = c
-            break
+    if response.status_code == 200:
+        # Tiêu đề bảng của bạn nằm ở dòng 2 (header=1)
+        df_sheet = pd.read_csv(io.StringIO(response.text), header=1)
+        
+        # Tìm cột Họ và tên
+        col_ten = None
+        for c in df_sheet.columns:
+            c_str = str(c).strip().lower()
+            if any(kw in c_str for kw in ["họ", "tên", "thành viên", "name"]):
+                col_ten = c
+                break
+        if col_ten is None:
+            col_ten = df_sheet.columns[1]
 
-    # 2. Tự động xác định cột 'Tổng'
-    col_tong = None
-    for c in df_sheet.columns:
-        if "tổng" in str(c).strip().lower() or "tong" in str(c).strip().lower():
-            col_tong = c
-            break
+        # Chuẩn hóa cột tên
+        df_sheet['ten_clean'] = df_sheet[col_ten].astype(str).str.strip().str.lower()
+
+        # Tìm cột Tổng
+        col_tong = None
+        for c in df_sheet.columns:
+            c_str = str(c).strip().lower()
+            if "tổng" in c_str or "tong" in c_str or "total" in c_str:
+                col_tong = c
+                break
+
+        if col_tong is not None:
+            st.success(f"✅ Đã tải dữ liệu! Lấy số ngày từ cột **'{col_tong}'**")
+            for ten in danh_sach_thanh_vien:
+                khop = df_sheet[df_sheet['ten_clean'] == ten.strip().lower()]
+                if not khop.empty:
+                    val = khop[col_tong].values[0]
+                    try:
+                        so_ngay_dict[ten] = float(str(val).replace(',', '.').strip())
+                    except (ValueError, TypeError):
+                        so_ngay_dict[ten] = 0.0
+        else:
+            st.info("ℹ️ Tự động cộng các ngày có đánh dấu **1** trong bảng.")
+            cac_cot_ngay = [c for c in df_sheet.columns if c not in [df_sheet.columns[0], col_ten, 'ten_clean', 'STT']]
             
-    if col_tong is None:
-        # Nếu không thấy chữ 'Tổng', mặc định lấy cột cuối cùng
-        col_tong = df_sheet.columns[-1]
+            for ten in danh_sach_thanh_vien:
+                khop = df_sheet[df_sheet['ten_clean'] == ten.strip().lower()]
+                if not khop.empty:
+                    row_vals = khop[cac_cot_ngay].values[0]
+                    tong_ngay = 0.0
+                    for v in row_vals:
+                        try:
+                            v_num = float(str(v).replace(',', '.').strip())
+                            if v_num > 0:
+                                tong_ngay += v_num
+                        except (ValueError, TypeError):
+                            pass
+                    so_ngay_dict[ten] = tong_ngay
 
-    st.success(f"✅ Đã kết nối Sheet! Tự động lấy số ngày từ cột: **'{col_tong}'**")
-
-    # Chuẩn hóa để so khớp tên chính xác
-    df_sheet['ten_clean'] = df_sheet[col_ten].astype(str).str.strip().str.lower()
-
-    for ten in danh_sach_thanh_vien:
-        khop = df_sheet[df_sheet['ten_clean'] == ten.strip().lower()]
-        if not khop.empty:
-            val = khop[col_tong].values[0]
-            try:
-                # Làm sạch và chuyển đổi sang số thực
-                val_clean = str(val).replace(',', '.').strip()
-                so_ngay_dict[ten] = float(val_clean)
-            except (ValueError, TypeError):
-                so_ngay_dict[ten] = 0.0
-
-    with st.expander("👁️ Xem trước bảng tính từ Google Sheet"):
-        st.dataframe(df_sheet)
+        with st.expander("👁️ Xem bảng tính đọc từ Google Sheet"):
+            st.dataframe(df_sheet)
+        sheet_loaded = True
+    else:
+        st.error(f"❌ Google Sheet trả về mã lỗi: {response.status_code}. Hãy kiểm tra lại quyền Chia sẻ.")
 
 except Exception as e:
-    st.error(
-        "❌ Chưa đọc được Google Sheet. Bạn nhớ kiểm tra xem file đã bật "
-        "**Chia sẻ -> Bất kỳ ai có đường liên kết đều có thể xem (Viewer)** chưa nhé!"
-    )
+    st.error(f"❌ Lỗi kết nối Google Sheet: {e}")
+    st.warning("⚠️ Hãy kiểm tra quyền: Bấm nút **Chia sẻ** trên Google Sheet -> chọn **Bất kỳ ai có đường liên kết** (Người xem).")
 
 st.markdown("---")
 
-# 3. Hiển thị số ngày tương ứng của từng bạn
+# 3. Form kiểm tra và nhập số ngày
 st.subheader("3. Số ngày ở của từng thành viên")
 danh_sach = []
 cols_form = st.columns(2)
@@ -130,7 +147,7 @@ if st.button("👉 Tính tiền điện", type="primary", use_container_width=Tr
             tong_tien_thuc_te += tien_dong
             ket_qua.append({
                 "Họ và tên": item["Họ và tên"],
-                "Số ngày ở (từ cột Tổng)": f"{item['Số ngày ở']:g} ngày",
+                "Số ngày ở": f"{item['Số ngày ở']:g} ngày",
                 "Tiền cần đóng": f"{tien_dong:,.0f} VNĐ"
             })
             

@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Tính Tiền Điện Phòng 307A", page_icon="⚡", layout="centered")
+st.set_page_config(page_title="TIỀN ĐIỆN NƯỚC P307A", page_icon="⚡", layout="centered")
 
-st.title("Tính Tiền Điện P307A")
+st.title("TIỀN ĐIỆN NƯỚC P307A")
 st.write("Công cụ phân bổ tiền điện công bằng theo số ngày ở thực tế của từng thành viên.")
 
 # 1. Nhập tổng tiền điện

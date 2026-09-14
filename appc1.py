@@ -3,7 +3,7 @@ import pandas as pd
 
 st.set_page_config(page_title="Tính Tiền Điện Phòng 307A", page_icon="⚡", layout="centered")
 
-st.title("⚡ Tính Tiền Điện Phòng Trọ")
+st.title("Tính Tiền Điện P307A")
 st.write("Công cụ phân bổ tiền điện công bằng theo số ngày ở thực tế của từng thành viên.")
 
 # 1. Nhập tổng tiền điện

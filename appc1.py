@@ -6,9 +6,9 @@ import io
 st.set_page_config(page_title="Tính Tiền Điện Phòng 307A", page_icon="⚡", layout="centered")
 
 st.title("⚡ Tính Tiền Điện Phòng 307A")
-st.write("Tự động đọc số ngày ở từ **cột 32 (Tổng)** trên Google Sheet.")
+st.write("Tự động lấy dữ liệu trực tiếp từ **Cột 1 (Tên)** và **Cột 32 (Số ngày)** trên Google Sheet.")
 
-# Danh sách 6 thành viên cố định theo đúng thứ tự
+# Danh sách 6 thành viên cố định
 danh_sach_thanh_vien = [
     "Hà Phương Anh",
     "Phương Ly",
@@ -30,7 +30,7 @@ tong_tien = st.number_input(
 
 st.markdown("---")
 
-# 2. Đọc tự động từ cột 32 của Google Sheet
+# 2. Đọc duy nhất Cột 1 và Cột 32 từ Google Sheet
 st.subheader("2. Dữ liệu từ Google Sheet")
 
 col_head1, col_head2 = st.columns([3, 1])
@@ -49,44 +49,39 @@ try:
     response = requests.get(CSV_URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
     
     if response.status_code == 200:
-        # Đọc dữ liệu bảng tính thô
+        # Đọc dữ liệu dạng thô (không tiêu đề)
         df_raw = pd.read_csv(io.StringIO(response.text), header=None, dtype=str)
         
-        # Chỉ định rõ cột cần lấy: Cột 32
-        TARGET_COL = 32
-        
-        if TARGET_COL in df_raw.columns:
-            # Dò tìm từng bạn và lấy giá trị ở đúng cột 32 trên dòng của bạn đó
-            for ten in danh_sach_thanh_vien:
-                ten_clean = ten.strip().lower()
-                for idx, row in df_raw.iterrows():
-                    # Kiểm tra xem dòng này có tên bạn đó không
-                    row_text = " ".join([str(val).strip().lower() for val in row.values if pd.notna(val)])
-                    if ten_clean in row_text:
-                        val_col32 = row[TARGET_COL]
-                        try:
-                            # Chuyển đổi giá trị tại cột 32 sang số
-                            so_ngay_dict[ten] = float(str(val_col32).replace(',', '.').strip())
-                        except (ValueError, TypeError):
-                            so_ngay_dict[ten] = 0.0
-                        break
-                        
-            st.success(f"✅ Đã kết nối Sheet thành công! Tự động lấy số ngày từ **cột {TARGET_COL}**.")
-        else:
-            st.error(f"⚠️ Bảng tính hiện tại chỉ có {len(df_raw.columns)} cột, không tìm thấy cột {TARGET_COL}.")
+        # Chỉ trích xuất đúng cột 1 và cột 32
+        df_sub = df_raw[[1, 32]].dropna(subset=[1])
+        df_sub.columns = ["Tên", "Số ngày (Cột 32)"]
 
-        with st.expander("👁️ Xem bảng tính đọc từ Google Sheet"):
-            st.dataframe(df_raw)
+        # Chuẩn hóa tên để đối chiếu
+        df_sub["ten_clean"] = df_sub["Tên"].astype(str).str.strip().str.lower()
+
+        for ten in danh_sach_thanh_vien:
+            ten_clean = ten.strip().lower()
+            khop = df_sub[df_sub["ten_clean"] == ten_clean]
+            if not khop.empty:
+                val = khop["Số ngày (Cột 32)"].values[0]
+                try:
+                    so_ngay_dict[ten] = float(str(val).replace(",", ".").strip())
+                except (ValueError, TypeError):
+                    so_ngay_dict[ten] = 0.0
+
+        st.success("✅ Đã kết nối thành công! Chỉ đọc đúng Cột 1 và Cột 32.")
+        with st.expander("👁️ Xem dữ liệu 2 cột trích xuất từ Sheet"):
+            st.dataframe(df_sub[["Tên", "Số ngày (Cột 32)"]])
     else:
-        st.error(f"❌ Không tải được Google Sheet (Mã lỗi HTTP: {response.status_code}).")
+        st.error(f"❌ Không tải được Sheet (Mã lỗi {response.status_code}).")
 
 except Exception as e:
     st.error(f"❌ Lỗi khi đọc dữ liệu: {e}")
 
 st.markdown("---")
 
-# 3. Form hiển thị số ngày được tự động điền từ cột 32 (vẫn sửa tay được nếu cần)
-st.subheader("3. Số ngày ở của từng bạn")
+# 3. Điền tự động số ngày vào từng thành viên
+st.subheader("3. Số ngày ở của từng thành viên")
 danh_sach = []
 cols_form = st.columns(2)
 

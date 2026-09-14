@@ -116,7 +116,7 @@ if st.button("Tính tiền điện nước từng thành viên", type="primary",
             tong_tien_thuc_te += tien_dong
             ket_qua.append({
                 "Họ và tên": item["Họ và tên"],
-                "Số ngày ở (Cột 32)": f"{item['Số ngày ở']:g} ngày",
+                "Tổng số ngày ở": f"{item['Số ngày ở']:g} ngày",
                 "Tiền cần đóng": f"{tien_dong:,.0f} VNĐ"
             })
             
